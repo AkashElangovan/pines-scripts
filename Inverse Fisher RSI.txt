@@ -1,0 +1,62 @@
+//@version=6
+indicator(title = "Inverse Fisher RSI (Ehlers Triggers)", shorttitle = "IF RSI Ehlers", overlay = false, format = format.price, precision = 2)
+
+// === Inputs ===
+rsiLength     = input.int(5, title="RSI Length")
+smoothing     = input.int(9, title="Smoothing Length (WMA)")
+showLine      = input.bool(true, title="Show Inverse Fisher Line")
+showBG        = input.bool(true, title="Highlight Buy/Sell Zones")
+
+// === RSI Calculation ===
+change = ta.change(close)
+up     = ta.rma(math.max(change, 0), rsiLength)
+down   = ta.rma(-math.min(change, 0), rsiLength)
+rsi    = down == 0 ? 100 : up == 0 ? 0 : 100 - (100 / (1 + up / down))
+
+// === Inverse Fisher Transform ===
+val1  = 0.1 * (rsi - 50)
+val2  = ta.wma(val1, smoothing)
+e2v   = math.exp(2 * val2)
+iFish = (e2v - 1) / (e2v + 1)  // Output range: [-1, 1]
+
+// === Persistent State Variables (Corrected)
+var bool hasCrossedAboveMinus05 = false
+var bool hasCrossedBelowPlus05  = false
+
+// === Trigger Detection ===
+crossAboveMinus = ta.crossover(iFish, -0.5)
+crossAbovePlus  = ta.crossover(iFish, 0.5)
+crossBelowPlus  = ta.crossunder(iFish, 0.5)
+crossBelowMinus = ta.crossunder(iFish, -0.5)
+
+// === Ehlers Triggers (Fully Accurate)
+buySignal  = crossAboveMinus or (crossAbovePlus and not hasCrossedAboveMinus05)
+sellSignal = crossBelowPlus  or (crossBelowMinus and not hasCrossedBelowPlus05)
+
+// === State Update Logic
+if crossAboveMinus
+    hasCrossedAboveMinus05 := true
+    hasCrossedBelowPlus05 := false
+
+if crossBelowPlus
+    hasCrossedBelowPlus05 := true
+    hasCrossedAboveMinus05 := false
+
+// === Plotting ===
+plot(showLine ? iFish : na, title="Inverse Fisher RSI", color=color.blue, linewidth=2)
+plot(-1, title="Scale Min", display=display.none)
+plot(1,  title="Scale Max", display=display.none)
+
+hline(1.0, "Max", color=color.gray, linestyle=hline.style_dotted)
+hline(-1.0, "Min", color=color.gray, linestyle=hline.style_dotted)
+hline(0.5, "Sell Trigger", color=color.red, linestyle=hline.style_dashed)
+hline(-0.5, "Buy Trigger", color=color.green, linestyle=hline.style_dashed)
+hline(0, "Zero Line", color=color.gray, linestyle=hline.style_dotted)
+
+// === Background Highlight (Optional) ===
+bgcolor(showBG and buySignal ? color.new(color.green, 85) : na)
+bgcolor(showBG and sellSignal ? color.new(color.red, 85) : na)
+
+// === Alerts ===
+alertcondition(buySignal, title="Buy Signal", message="Inverse Fisher RSI Buy Signal")
+alertcondition(sellSignal, title="Sell Signal", message="Inverse Fisher RSI Sell Signal")
