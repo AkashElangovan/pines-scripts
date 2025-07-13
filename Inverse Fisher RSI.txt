@@ -19,28 +19,9 @@ val2  = ta.wma(val1, smoothing)
 e2v   = math.exp(2 * val2)
 iFish = (e2v - 1) / (e2v + 1)  // Output range: [-1, 1]
 
-// === Persistent State Variables (Corrected)
-var bool hasCrossedAboveMinus05 = false
-var bool hasCrossedBelowPlus05  = false
-
-// === Trigger Detection ===
-crossAboveMinus = ta.crossover(iFish, -0.5)
-crossAbovePlus  = ta.crossover(iFish, 0.5)
-crossBelowPlus  = ta.crossunder(iFish, 0.5)
-crossBelowMinus = ta.crossunder(iFish, -0.5)
-
-// === Ehlers Triggers (Fully Accurate)
-buySignal  = crossAboveMinus or (crossAbovePlus and not hasCrossedAboveMinus05)
-sellSignal = crossBelowPlus  or (crossBelowMinus and not hasCrossedBelowPlus05)
-
-// === State Update Logic
-if crossAboveMinus
-    hasCrossedAboveMinus05 := true
-    hasCrossedBelowPlus05 := false
-
-if crossBelowPlus
-    hasCrossedBelowPlus05 := true
-    hasCrossedAboveMinus05 := false
+// === Core Entry Triggers ===
+buySignal  = ta.crossover(iFish, -0.5)
+sellSignal = ta.crossunder(iFish, 0.5)
 
 // === Plotting ===
 plot(showLine ? iFish : na, title="Inverse Fisher RSI", color=color.blue, linewidth=2)
