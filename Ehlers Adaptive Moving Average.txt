@@ -1,0 +1,77 @@
+//@version=6
+indicator("MAMA - Ehlers Adaptive Moving Average", shorttitle="MAMA/FAMA", overlay=false)
+
+// === Input ===
+price = hl2
+fastLimit = input.float(0.5, minval=0.01, maxval=1.0, title="Fast Limit")
+slowLimit = input.float(0.05, minval=0.01, maxval=1.0, title="Slow Limit")
+highlightCrosses = input.bool(true, title="Highlight Crossovers")
+
+// === Step 1: Smoothing and Detrender ===
+smooth = 0.4 * price + 0.3 * price[1] + 0.2 * price[2] + 0.1 * price[3]
+detrender = (.0962 * smooth + .5769 * smooth[2] - .5769 * smooth[4] - .0962 * smooth[6]) * (0.075 + 0.54)
+
+// === Step 2: I/Q Components ===
+Q1 = (.0962 * detrender + .5769 * detrender[2] - .5769 * detrender[4] - .0962 * detrender[6]) * (0.075 + 0.54)
+I1 = detrender[3]
+
+// 90° phase advance
+jI = (.0962 * I1 + .5769 * I1[2] - .5769 * I1[4] - .0962 * I1[6]) * (0.075 + 0.54)
+jQ = (.0962 * Q1 + .5769 * Q1[2] - .5769 * Q1[4] - .0962 * Q1[6]) * (0.075 + 0.54)
+
+// === Step 3: Phasor combination and smoothing ===
+I2_raw = I1 - jQ
+Q2_raw = Q1 + jI
+
+var float I2 = na
+var float Q2 = na
+I2 := 0.2 * I2_raw + 0.8 * nz(I2[1])
+Q2 := 0.2 * Q2_raw + 0.8 * nz(Q2[1])
+
+// === Step 4: Homodyne Discriminator ===
+Re = I2 * nz(I2[1]) + Q2 * nz(Q2[1])
+Im = I2 * nz(Q2[1]) - Q2 * nz(I2[1])
+
+var float ReSmooth = na
+var float ImSmooth = na
+ReSmooth := 0.2 * Re + 0.8 * nz(ReSmooth[1])
+ImSmooth := 0.2 * Im + 0.8 * nz(ImSmooth[1])
+
+// === Step 5: Period Estimation ===
+period_raw = 360 / math.atan(ImSmooth / ReSmooth)
+period_temp = period_raw
+period_temp := period_temp > 1.5 * nz(period_temp[1]) ? 1.5 * nz(period_temp[1]) : period_temp
+period_temp := period_temp < 0.67 * nz(period_temp[1]) ? 0.67 * nz(period_temp[1]) : period_temp
+period_temp := period_temp < 6 ? 6 : period_temp
+period = period_temp > 50 ? 50 : period_temp
+period := 0.2 * period + 0.8 * nz(period[1])
+
+smoothPeriod = 0.33 * period + 0.67 * nz(period[1])
+
+// === Step 6: Phase and Alpha ===
+phase = math.atan(Q1 / I1)
+deltaPhase = nz(phase[1]) - phase
+deltaPhase := deltaPhase < 1 ? 1 : deltaPhase
+
+alpha = fastLimit / deltaPhase
+alpha := alpha < slowLimit ? slowLimit : alpha
+
+// === Step 7: MAMA and FAMA ===
+var float MAMA = na
+var float FAMA = na
+
+MAMA := na(MAMA[1]) ? price : alpha * price + (1 - alpha) * MAMA[1]
+FAMA := na(FAMA[1]) ? MAMA : 0.5 * alpha * MAMA + (1 - 0.5 * alpha) * FAMA[1]
+
+// === Plot ===
+plot(MAMA, title="MAMA", color=color.red, linewidth=2)
+plot(FAMA, title="FAMA", color=color.blue, linewidth=2)
+
+// === Cross Signals ===
+crossUp = ta.crossover(MAMA, FAMA)
+crossDown = ta.crossunder(MAMA, FAMA)
+
+plotshape(crossUp, title="Buy Signal", location=location.bottom, style=shape.triangleup, color=color.green, size=size.small)
+plotshape(crossDown, title="Sell Signal", location=location.top, style=shape.triangledown, color=color.red, size=size.small)
+
+bgcolor(highlightCrosses ? (crossUp ? color.new(color.green, 85) : crossDown ? color.new(color.red, 85) : na) : na)
